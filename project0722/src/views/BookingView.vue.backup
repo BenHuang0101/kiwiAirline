@@ -1,0 +1,455 @@
+<template>
+  <div class="booking-view">
+    <div class="booking-container">
+      <!-- 訂票進度指示器 -->
+      <div class="progress-indicator">
+       const handlePaymentSubmit = async (paymentData) => {
+  try {
+    console.log('💳 處理付款資料...', paymentData)
+    console.log('👥 乘客資料:', bookingStore.passengers)
+    console.log('✈️ 航班資料:', selectedFlight.value)
+    console.log('🔍 航班ID類型和值:', typeof selectedFlight.value?.flightId, selectedFlight.value?.flightId)
+    console.log('👤 用戶資料:', authStore.userInfo)
+    
+    // 如果沒有乘客資料，建立預設乘客
+    let passengers = bookingStore.passengers
+    if (!passengers || passengers.length === 0) {
+      console.log('⚠️ 沒有乘客資料，建立預設乘客')
+      passengers = [{
+        firstName: '測試',
+        lastName: '用戶',
+        email: authStore.userInfo?.email || 'test@example.com',
+        phone: authStore.userInfo?.phoneNumber || '+886912345678',
+        dateOfBirth: '1990-01-01',
+        gender: 'other',
+        nationality: 'TW',
+        passportNumber: 'TEMP123456'
+      }]
+    }
+    
+    // 建立訂單（會調用後端 API，後端會模擬付款成功）
+    const bookingData = {
+      flightId: parseInt(selectedFlight.value.flightId) || selectedFlight.value.flightId, // 確保是數字
+      passengers: passengers.map(passenger => ({"progress-steps">
+          <div class="step" :class="{ active: currentStep >= 1, completed: currentStep > 1 }">
+            <span class="step-number">1</span>
+            <span class="step-label">選擇航班</span>
+          </div>
+          <div class="step" :class="{ active: currentStep >= 2, completed: currentStep > 2 }">
+            <span class="step-number">2</span>
+            <span class="step-label">乘客資訊</span>
+          </div>
+          <div class="step" :class="{ active: currentStep >= 3, completed: currentStep > 3 }">
+            <span class="step-number">3</span>
+            <span class="step-label">付款</span>
+          </div>
+          <div class="step" :class="{ active: currentStep >= 4 }">
+            <span class="step-number">4</span>
+            <span class="step-label">完成</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 步驟內容 -->
+      <div class="step-content">
+        <!-- 步驟1: 航班確認 -->
+        <div v-if="currentStep === 1" class="step-panel">
+          <h2 class="step-title">確認選擇的航班</h2>
+          <div v-if="selectedFlight" class="flight-summary">
+            <div class="flight-info">
+              <h3>{{ selectedFlight.flightNumber }}</h3>
+              <div class="route">
+                <span>{{ selectedFlight.departure.city }} ({{ selectedFlight.departure.airportCode }})</span>
+                <span>→</span>
+                <span>{{ selectedFlight.arrival.city }} ({{ selectedFlight.arrival.airportCode }})</span>
+              </div>
+              <div class="datetime">
+                {{ formatDateTime(selectedFlight.departure.dateTime) }} - 
+                {{ formatDateTime(selectedFlight.arrival.dateTime) }}
+              </div>
+              <div class="price">
+                {{ selectedFlight.price.currency }} {{ selectedFlight.price.amount.toLocaleString() }}
+              </div>
+            </div>
+            <button @click="nextStep" class="btn btn-primary">確認航班</button>
+          </div>
+        </div>
+
+        <!-- 步驟2: 乘客資訊 -->
+        <div v-if="currentStep === 2" class="step-panel">
+          <h2 class="step-title">填寫乘客資訊</h2>
+          <PassengerForm 
+            :passenger-count="passengerCount"
+            @submit="handlePassengerSubmit"
+          />
+        </div>
+
+        <!-- 步驟3: 付款 -->
+        <div v-if="currentStep === 3" class="step-panel">
+          <h2 class="step-title">付款資訊</h2>
+          <PaymentForm 
+            :booking-summary="bookingSummary"
+            @submit="handlePaymentSubmit"
+          />
+        </div>
+
+        <!-- 步驟4: 完成 -->
+        <div v-if="currentStep === 4" class="step-panel">
+          <div class="success-message">
+            <div class="success-icon">
+              <svg width="64" height="64" viewBox="0 0 64 64">
+                <circle cx="32" cy="32" r="28" fill="var(--success)"/>
+                <path fill="white" d="M26 34l-6-6-4 4 10 10 18-18-4-4-14 14z"/>
+              </svg>
+            </div>
+            <h2>訂票成功！</h2>
+            <p>您的訂單已經確認，電子機票已發送到您的信箱</p>
+            <div class="booking-info">
+              <p><strong>訂單編號：</strong>{{ bookingNumber }}</p>
+              <p><strong>確認碼：</strong>{{ confirmationCode }}</p>
+            </div>
+            <div class="action-buttons">
+              <router-link to="/my-bookings" class="btn btn-primary">
+                查看我的訂單
+              </router-link>
+              <router-link to="/" class="btn btn-outline">
+                回到首頁
+              </router-link>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref, computed, onMounted } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
+import { useFlightStore } from '../stores/flight'
+import { useBookingStore } from '../stores/booking'
+import { useAuthStore } from '../stores/auth'
+import PassengerForm from '../components/PassengerForm.vue'
+import PaymentForm from '../components/PaymentForm.vue'
+
+const router = useRouter()
+const route = useRoute()
+const flightStore = useFlightStore()
+const bookingStore = useBookingStore()
+const authStore = useAuthStore()
+
+// 響應式資料
+const currentStep = ref(1)
+const bookingNumber = ref('')
+const confirmationCode = ref('')
+
+// 計算屬性
+const selectedFlight = computed(() => flightStore.selectedFlight)
+const passengerCount = computed(() => flightStore.searchCriteria.passengers || 1)
+const bookingSummary = computed(() => ({
+  flight: selectedFlight.value,
+  passengers: bookingStore.passengers,
+  totalAmount: selectedFlight.value?.price.amount * passengerCount.value
+}))
+
+// 工具函數
+const formatDateTime = (dateTimeString) => {
+  const date = new Date(dateTimeString)
+  return date.toLocaleString('zh-TW', {
+    month: 'numeric',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+}
+
+// 事件處理
+const nextStep = () => {
+  if (currentStep.value < 4) {
+    currentStep.value++
+  }
+}
+
+const handlePassengerSubmit = (passengerData) => {
+  bookingStore.setPassengers(passengerData)
+  nextStep()
+}
+
+const handlePaymentSubmit = async (paymentData) => {
+  try {
+    console.log('💳 處理付款資料...', paymentData)
+    console.log('👥 乘客資料:', bookingStore.passengers)
+    console.log('✈️ 航班資料:', selectedFlight.value)
+    console.log('� 航班ID類型和值:', typeof selectedFlight.value?.flightId, selectedFlight.value?.flightId)
+    console.log('�👤 用戶資料:', authStore.userInfo)
+    
+    // 建立訂單（會調用後端 API，後端會模擬付款成功）
+    const bookingData = {
+      flightId: parseInt(selectedFlight.value.flightId) || selectedFlight.value.flightId, // 確保是數字
+      passengers: bookingStore.passengers.map(passenger => ({
+        firstName: passenger.firstName || '測試',
+        lastName: passenger.lastName || '用戶',
+        email: passenger.email || authStore.userInfo?.email || 'test@example.com',
+        phone: passenger.phoneNumber || passenger.phone || authStore.userInfo?.phoneNumber || '+886912345678',
+        dateOfBirth: passenger.dateOfBirth || '1990-01-01',
+        gender: passenger.gender || 'other',
+        nationality: passenger.nationality || 'TW',
+        passportNumber: passenger.passportNumber || 'TEMP123456',
+        passportExpiry: '2030-12-31', // 預設護照到期日
+        seatPreference: 'none',
+        mealPreference: 'regular',
+        specialRequests: ''
+      })),
+      contactInfo: {
+        email: authStore.userInfo?.email || 'test@example.com',
+        phone: authStore.userInfo?.phoneNumber || '+886912345678'
+      },
+      payment: {
+        cardNumber: paymentData.cardNumber?.replace(/\s/g, '') || '4111111111111111', // 預設測試卡號
+        expiryMonth: paymentData.expiryDate ? parseInt(paymentData.expiryDate.split('/')[0]) : 12,
+        expiryYear: paymentData.expiryDate ? parseInt('20' + paymentData.expiryDate.split('/')[1]) : 2025,
+        cvv: paymentData.cvv || '123',
+        cardholderName: paymentData.cardholderName || (authStore.userInfo?.firstName + ' ' + authStore.userInfo?.lastName) || 'Test User'
+      }
+    }
+
+    console.log('📝 準備建立訂單...', bookingData)
+    const result = await bookingStore.createBooking(bookingData)
+    
+    if (result.success) {
+      console.log('✅ 訂單建立成功:', result.data)
+      bookingNumber.value = result.data.bookingNumber || result.data.booking_number
+      confirmationCode.value = result.data.confirmationCode || result.data.confirmation_code
+      nextStep()
+    } else {
+      console.error('❌ 訂單建立失敗:', result.message)
+      alert('訂票失敗：' + result.message)
+    }
+  } catch (error) {
+    console.error('💥 訂票錯誤:', error)
+    alert('訂票失敗，請稍後再試')
+  }
+}
+
+// 頁面載入
+onMounted(async () => {
+  // 檢查是否已登入
+  if (!authStore.isLoggedIn) {
+    router.push('/login')
+    return
+  }
+
+  // 獲取航班詳情
+  const flightId = route.params.flightId
+  if (flightId && !selectedFlight.value) {
+    await flightStore.getFlightDetails(flightId)
+  }
+
+  // 如果沒有選擇航班，跳轉到首頁
+  if (!selectedFlight.value) {
+    router.push('/')
+  }
+})
+</script>
+
+<style scoped>
+.booking-view {
+  min-height: 100vh;
+  background-color: var(--light-gray);
+  padding: var(--space-6) 0;
+}
+
+.booking-container {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 0 var(--space-4);
+}
+
+/* 進度指示器 */
+.progress-indicator {
+  background-color: var(--white);
+  border-radius: 8px;
+  padding: var(--space-6);
+  margin-bottom: var(--space-6);
+  box-shadow: var(--shadow-sm);
+}
+
+.progress-steps {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  position: relative;
+}
+
+.progress-steps::before {
+  content: '';
+  position: absolute;
+  top: 20px;
+  left: 30px;
+  right: 30px;
+  height: 2px;
+  background-color: var(--border-gray);
+  z-index: 1;
+}
+
+.step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  z-index: 2;
+}
+
+.step-number {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background-color: var(--border-gray);
+  color: var(--white);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  margin-bottom: var(--space-2);
+}
+
+.step.active .step-number {
+  background-color: var(--kiwi-blue);
+}
+
+.step.completed .step-number {
+  background-color: var(--success);
+}
+
+.step-label {
+  font-size: var(--text-sm);
+  color: var(--medium-gray);
+  text-align: center;
+}
+
+.step.active .step-label {
+  color: var(--kiwi-blue);
+  font-weight: 600;
+}
+
+/* 步驟內容 */
+.step-content {
+  background-color: var(--white);
+  border-radius: 8px;
+  padding: var(--space-6);
+  box-shadow: var(--shadow-sm);
+}
+
+.step-panel {
+  min-height: 400px;
+}
+
+.step-title {
+  font-size: var(--text-xl);
+  font-weight: 600;
+  color: var(--deep-sea);
+  margin-bottom: var(--space-6);
+}
+
+/* 航班摘要 */
+.flight-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-4);
+  border: 1px solid var(--border-gray);
+  border-radius: 8px;
+  margin-bottom: var(--space-4);
+}
+
+.flight-info h3 {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--kiwi-blue);
+  margin-bottom: var(--space-2);
+}
+
+.route {
+  color: var(--deep-sea);
+  margin-bottom: var(--space-2);
+}
+
+.datetime {
+  color: var(--medium-gray);
+  font-size: var(--text-sm);
+  margin-bottom: var(--space-2);
+}
+
+.price {
+  font-size: var(--text-xl);
+  font-weight: 700;
+  color: var(--kiwi-orange);
+}
+
+/* 成功訊息 */
+.success-message {
+  text-align: center;
+  padding: var(--space-8);
+}
+
+.success-icon {
+  margin-bottom: var(--space-4);
+}
+
+.success-message h2 {
+  font-size: var(--text-2xl);
+  color: var(--success);
+  margin-bottom: var(--space-4);
+}
+
+.success-message p {
+  color: var(--medium-gray);
+  margin-bottom: var(--space-6);
+}
+
+.booking-info {
+  background-color: var(--light-gray);
+  padding: var(--space-4);
+  border-radius: 8px;
+  margin-bottom: var(--space-6);
+}
+
+.booking-info p {
+  margin-bottom: var(--space-2);
+  color: var(--deep-sea);
+}
+
+.action-buttons {
+  display: flex;
+  gap: var(--space-4);
+  justify-content: center;
+}
+
+/* 響應式設計 */
+@media (max-width: 768px) {
+  .progress-steps {
+    flex-direction: column;
+    gap: var(--space-4);
+  }
+
+  .progress-steps::before {
+    display: none;
+  }
+
+  .flight-summary {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-4);
+  }
+
+  .action-buttons {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .action-buttons .btn {
+    width: 100%;
+    max-width: 300px;
+  }
+}
+</style>
